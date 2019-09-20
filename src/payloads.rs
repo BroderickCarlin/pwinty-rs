@@ -1,19 +1,19 @@
 use chrono::prelude::*;
 use serde::{Deserialize, Serialize};
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct Country {
     pub name: String,
     pub iso_code: String,
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, Clone)]
 pub(crate) struct Countries {
     pub data: Vec<Country>,
 }
 
-#[derive(Serialize, Debug)]
+#[derive(Serialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct OrderCreate {
     pub merchant_order_id: Option<u64>,
@@ -62,12 +62,12 @@ impl OrderCreate {
     }
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, Clone)]
 pub(crate) struct OrderWrapper {
     pub data: Order,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum OrderShippingMethod {
     Budget,
     Standard,
@@ -75,13 +75,13 @@ pub enum OrderShippingMethod {
     Overnight,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum OrderPayment {
     InvoiceMe,
     InvoiceRecipient,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum OrderStatus {
     NotYetDownloaded,
     NotYetSubmitted,
@@ -91,7 +91,7 @@ pub enum OrderStatus {
     Cancelled,
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct Order {
     pub id: u64,
@@ -125,7 +125,7 @@ pub struct Order {
     pub error_message: Option<String>,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum OrderShippingCarrier {
     RoyalMail,
     RoyalMailFirstClass,
@@ -148,13 +148,13 @@ pub enum OrderShippingCarrier {
     NotKnown,
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, Clone)]
 pub struct OrderShippingInfo {
     pub price: f64,
     pub shipments: Vec<OrderShipment>,
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct OrderShipment {
     pub carrier: OrderShippingCarrier,
@@ -168,12 +168,22 @@ pub struct OrderShipment {
     pub shipped_on: DateTime<Utc>,
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, Clone)]
 pub struct OrderImageWrapper {
     pub data: OrderImage,
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, Clone)]
+pub struct OrderImagesWrapperInner {
+    pub items: Vec<OrderImage>,
+}
+
+#[derive(Deserialize, Debug, Clone)]
+pub struct OrderImagesWrapper {
+    pub data: OrderImagesWrapperInner,
+}
+
+#[derive(Deserialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct OrderImage {
     pub id: u64,
@@ -191,7 +201,7 @@ pub struct OrderImage {
     pub error_message: Option<String>,
 }
 
-#[derive(Deserialize, Serialize, Debug)]
+#[derive(Deserialize, Serialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct OrderImageAttributes {
     pub substrate_weight: Option<String>,
@@ -201,14 +211,14 @@ pub struct OrderImageAttributes {
     pub frame_colour: Option<String>,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum ImageResizingMethod {
     Crop,
     ShrinkToFit,
     ShrinkToExactFit,
 }
 
-#[derive(Serialize, Debug)]
+#[derive(Serialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct OrderImageAdd {
     pub sku: String,

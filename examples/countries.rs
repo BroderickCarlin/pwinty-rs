@@ -8,7 +8,8 @@ fn main() {
     let api_key =
         std::env::var("XPwintyRESTAPIKey").expect("Could not find 'XPwintyRESTAPIKey' env var");
 
-    let api = pwinty::Api::new_sandbox(&merchant_id, &api_key);
+    let api = pwinty::Api::new_sandbox(&merchant_id, &api_key)
+        .expect("Something went wrong creating the API instance");
 
     let get_countries = api
         .countries()

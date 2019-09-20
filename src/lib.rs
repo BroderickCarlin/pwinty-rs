@@ -4,7 +4,7 @@ use futures::{future, Future};
 use serde::de::DeserializeOwned;
 
 use reqwest::{
-    header::HeaderMap,
+    header::{self, HeaderMap},
     r#async::{Client, RequestBuilder, Response},
     Method, StatusCode,
 };
@@ -40,38 +40,36 @@ impl From<serde_json::Error> for ApiError {
     }
 }
 
-// impl<T: DeserializeOwned> Future for ApiError {
-//     type Item = T;
-//     type Error = ApiError;
-//     fn poll(&mut self) -> Poll<T, Self::Error> {
-//         Err(self)
-//     }
-// }
-
 pub struct Api {
     base_url: &'static str,
     pub version: &'static str,
-    merchant_id: String,
-    api_key: String,
+    merchant_id: header::HeaderValue,
+    api_key: header::HeaderValue,
+    client: Client,
 }
 
 impl Api {
-    pub fn new_sandbox(merchant_id: &str, api_key: &str) -> Self {
-        Self {
+    pub fn new_sandbox(
+        merchant_id: &str,
+        api_key: &str,
+    ) -> Result<Self, header::InvalidHeaderValue> {
+        Ok(Self {
             base_url: SANDBOX_API_BASE_URL,
             version: API_VERSION,
-            merchant_id: merchant_id.to_string(),
-            api_key: api_key.to_string(),
-        }
+            merchant_id: header::HeaderValue::from_str(merchant_id)?,
+            api_key: header::HeaderValue::from_str(api_key)?,
+            client: Client::new(),
+        })
     }
 
-    pub fn new_live(merchant_id: &str, api_key: &str) -> Self {
-        Self {
+    pub fn new_live(merchant_id: &str, api_key: &str) -> Result<Self, header::InvalidHeaderValue> {
+        Ok(Self {
             base_url: LIVE_API_BASE_URL,
             version: API_VERSION,
-            merchant_id: merchant_id.to_string(),
-            api_key: api_key.to_string(),
-        }
+            merchant_id: header::HeaderValue::from_str(merchant_id)?,
+            api_key: header::HeaderValue::from_str(api_key)?,
+            client: Client::new(),
+        })
     }
 
     fn url_for_endpoint(&self, endpoint: &str) -> String {
@@ -81,13 +79,19 @@ impl Api {
         url
     }
 
-    fn add_headers(&self, builder: RequestBuilder) -> Result<RequestBuilder, ApiError> {
+    fn add_headers(&self, builder: RequestBuilder) -> RequestBuilder {
         let mut headers = HeaderMap::new();
-        headers.insert("X-Pwinty-MerchantId", self.merchant_id.parse()?);
-        headers.insert("X-Pwinty-REST-API-Key", self.api_key.parse()?);
-        headers.insert("Content-Type", "application/json".parse()?);
-        headers.insert("accept", "application/json".parse()?);
-        Ok(builder.headers(headers))
+        headers.insert("X-Pwinty-MerchantId", self.merchant_id.clone());
+        headers.insert("X-Pwinty-REST-API-Key", self.api_key.clone());
+        headers.insert(
+            "Content-Type",
+            header::HeaderValue::from_static("application/json"),
+        );
+        headers.insert(
+            "accept",
+            header::HeaderValue::from_static("application/json"),
+        );
+        builder.headers(headers)
     }
 
     fn make_request<Resp: 'static + DeserializeOwned + Send>(
@@ -99,14 +103,9 @@ impl Api {
     ) -> Box<dyn Future<Item = Resp, Error = ApiError> + Send> {
         let url = self.url_for_endpoint(endpoint);
         let client = if add_headers {
-            match self.add_headers(Client::new().request(method, &url)) {
-                Ok(res) => res,
-                Err(e) => {
-                    return Box::new(future::err(ApiError::InternalError(format!("{:?}", e))))
-                }
-            }
+            self.add_headers(self.client.request(method, &url))
         } else {
-            Client::new().request(method, &url)
+            self.client.request(method, &url)
         };
 
         let request = if let Some(request_body) = body {
@@ -117,7 +116,7 @@ impl Api {
         Box::new(
             request
                 .send()
-                .map_err(|e| ApiError::RequestError(e))
+                .map_err(ApiError::RequestError)
                 .and_then(|mut res: Response| {
                     if !res.status().is_success() {
                         return future::err(ApiError::ResponseError {
@@ -150,28 +149,78 @@ impl Api {
 
         Box::new(
             self.make_request::<payloads::OrderWrapper>("/orders", Method::POST, true, Some(body))
-                .and_then(|order| future::ok(order.data)),
+                .and_then(|order| Ok(order.data)),
         )
     }
 
-    pub fn add_image_to_order(
+    // pub fn add_image_to_order(
+    //     &self,
+    //     order_id: u64,
+    //     image_info: &payloads::OrderImageAdd,
+    // ) -> Box<dyn Future<Item = payloads::OrderImage, Error = ApiError> + Send> {
+    //     let body = match serde_json::to_string(&image_info) {
+    //         Ok(body) => body,
+    //         Err(e) => return Box::new(future::err(ApiError::InternalError(format!("{:?}", e)))),
+    //     };
+
+    //     Box::new(
+    //         self.make_request::<payloads::OrderImageWrapper>(
+    //             &format!("/orders/{:}/images", order_id),
+    //             Method::POST,
+    //             true,
+    //             Some(body),
+    //         )
+    //         .and_then(|order| Ok(order.data)),
+    //     )
+    // }
+
+    pub fn add_images_to_order(
         &self,
         order_id: u64,
-        image_info: &payloads::OrderImageAdd,
-    ) -> Box<dyn Future<Item = payloads::OrderImage, Error = ApiError> + Send> {
-        let body = match serde_json::to_string(&image_info) {
-            Ok(body) => body,
-            Err(e) => return Box::new(future::err(ApiError::InternalError(format!("{:?}", e)))),
-        };
+        images_info: &[payloads::OrderImageAdd],
+    ) -> Box<dyn Future<Item = Vec<payloads::OrderImage>, Error = ApiError> + Send> {
+        if images_info.is_empty() {
+            return Box::new(future::err(ApiError::InternalError(
+                "No images provided".to_string(),
+            )));
+        }
 
-        Box::new(
-            self.make_request::<payloads::OrderImageWrapper>(
-                &format!("/orders/{:}/images", order_id),
-                Method::POST,
-                true,
-                Some(body),
+        // If only a single image is provided we will utilize the endpoint designed to
+        // only take a single image, otherwise we fall back to a batch upload
+        if images_info.len() == 1 {
+            let body = match serde_json::to_string(&images_info[0]) {
+                Ok(body) => body,
+                Err(e) => {
+                    return Box::new(future::err(ApiError::InternalError(format!("{:?}", e))))
+                }
+            };
+
+            Box::new(
+                self.make_request::<payloads::OrderImageWrapper>(
+                    &format!("/orders/{:}/images", order_id),
+                    Method::POST,
+                    true,
+                    Some(body),
+                )
+                .and_then(|order| Ok(vec![order.data])),
             )
-            .and_then(|order| Ok(order.data)),
-        )
+        } else {
+            let body = match serde_json::to_string(&images_info) {
+                Ok(body) => body,
+                Err(e) => {
+                    return Box::new(future::err(ApiError::InternalError(format!("{:?}", e))))
+                }
+            };
+
+            Box::new(
+                self.make_request::<payloads::OrderImagesWrapper>(
+                    &format!("/orders/{:}/images/batch", order_id),
+                    Method::POST,
+                    true,
+                    Some(body),
+                )
+                .and_then(|order| Ok(order.data.items)),
+            )
+        }
     }
 }
